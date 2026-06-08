@@ -11,16 +11,8 @@ import android.text.InputType;
 import android.widget.LinearLayout.LayoutParams;
 
 public class MainActivity extends Activity {
-    static { System.loadLibrary("vanity_miner"); }
     
-    private native void nativeStartMining(int minRepeat, int threads, boolean useGPU);
-    private native void nativeStopMining();
-    private native long nativeGetTotal();
-    private native long nativeGetFound();
-    private native boolean nativeHasResult();
-    private native String nativeGetResult();
-    
-    private TextView speedText, totalText, foundText, resultText;
+    private TextView speedText, totalText, foundText;
     private EditText minRepeatInput;
     private RadioButton cpuRadio, gpuRadio;
     private SeekBar cpuSeekBar, gpuSeekBar;
@@ -28,6 +20,9 @@ public class MainActivity extends Activity {
     private Button startBtn, stopBtn;
     
     private Handler handler = new Handler();
+    private volatile boolean running = false;
+    private long totalChecked = 0;
+    private long foundCount = 0;
     private long lastTotal = 0;
     private long lastTime = 0;
     
@@ -61,12 +56,6 @@ public class MainActivity extends Activity {
         foundText.setText("💎 Найдено: 0");
         layout.addView(foundText);
         
-        resultText = new TextView(this);
-        resultText.setText("");
-        resultText.setTextSize(12);
-        resultText.setTextColor(Color.parseColor("#FFAA00"));
-        layout.addView(resultText);
-        
         addSpace(layout, 10);
         
         TextView filterLabel = new TextView(this);
@@ -77,8 +66,6 @@ public class MainActivity extends Activity {
         minRepeatInput = new EditText(this);
         minRepeatInput.setText("5");
         minRepeatInput.setInputType(InputType.TYPE_CLASS_NUMBER);
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(200, LayoutParams.WRAP_CONTENT);
-        minRepeatInput.setLayoutParams(params);
         layout.addView(minRepeatInput);
         
         addSpace(layout, 10);
@@ -166,28 +153,18 @@ public class MainActivity extends Activity {
             if (lastTime == 0) { lastTime = System.currentTimeMillis(); lastTotal = 0; }
             
             long now = System.currentTimeMillis();
-            long total = nativeGetTotal();
-            long found = nativeGetFound();
             double elapsed = (now - lastTime) / 1000.0;
             
-            if (elapsed > 0) {
-                int speed = (int)((total - lastTotal) / elapsed);
+            if (elapsed > 0 && running) {
+                int speed = (int)((totalChecked - lastTotal) / elapsed);
                 speedText.setText("⚡ Скорость: " + speed + "/сек");
             }
             
-            totalText.setText("📊 Проверено: " + total);
-            foundText.setText("💎 Найдено: " + found);
+            totalText.setText("📊 Проверено: " + totalChecked);
+            foundText.setText("💎 Найдено: " + foundCount);
             
             lastTime = now;
-            lastTotal = total;
-            
-            if (nativeHasResult()) {
-                String result = nativeGetResult();
-                String[] parts = result.split("\\|");
-                if (parts.length == 2) {
-                    resultText.setText("✅ Адрес: " + parts[0] + "\n🔑 Ключ: " + parts[1]);
-                }
-            }
+            lastTotal = totalChecked;
             
             handler.postDelayed(this, 1000);
         }
@@ -200,22 +177,23 @@ public class MainActivity extends Activity {
     }
     
     private void startMining() {
-        int minRepeat = Integer.parseInt(minRepeatInput.getText().toString());
-        int threads = cpuSeekBar.getProgress();
-        boolean useGPU = gpuRadio.isChecked();
-        
+        running = true;
         lastTime = 0;
         lastTotal = 0;
-        resultText.setText("");
         
-        nativeStartMining(minRepeat, threads, useGPU);
+        new Thread(() -> {
+            while (running) {
+                totalChecked++;
+                // Тут будет реальная генерация
+            }
+        }).start();
         
         startBtn.setEnabled(false);
         stopBtn.setEnabled(true);
     }
     
     private void stopMining() {
-        nativeStopMining();
+        running = false;
         startBtn.setEnabled(true);
         stopBtn.setEnabled(false);
         speedText.setText("⚡ Скорость: 0/сек");
@@ -224,7 +202,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        nativeStopMining();
+        running = false;
         handler.removeCallbacks(updateStats);
     }
 }
